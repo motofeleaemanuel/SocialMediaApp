@@ -18,6 +18,7 @@ interface IUser extends Document {
     refreshToken: string[];
     isVerified: boolean;
     avatar: string;
+    cover: string;
     friends: Schema.Types.ObjectId[];
     friendRequests: Schema.Types.ObjectId[];
     posts: Schema.Types.ObjectId[];
@@ -41,6 +42,7 @@ const userSchema = new Schema<IUser>({
     refreshToken: { type: [String] },
     isVerified: { type: Boolean, default: false, required: true },
     avatar: { type: String },
+    cover: { type: String },
     friends: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     friendRequests: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     posts: [{ type: Schema.Types.ObjectId, ref: 'Post' }]

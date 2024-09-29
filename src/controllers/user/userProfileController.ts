@@ -181,3 +181,109 @@ export const updateAvatar = async (req: AuthRequest, res: Response) => {
         return res.status(500).json({ message: 'Server error' });
     }
 };
+
+export const updateCover = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user?.id;
+
+        if (!userId) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        // If a cover image is provided in the request, handle the file upload
+        if (req.file) {
+            const coverFile = req.file;
+            const uniqueFileName = `${uuidv4()}-${coverFile.originalname}`;
+            const blob = bucket.file(uniqueFileName);
+
+            const blobStream = blob.createWriteStream({
+                metadata: {
+                    contentType: coverFile.mimetype, // Ensure correct MIME type is set
+                }
+            });
+
+            blobStream.on('error', (err) => {
+                console.error('File upload error:', err);
+                return res.status(500).json({ message: 'Cover upload failed' });
+            });
+
+            blobStream.on('finish', async () => {
+                try {
+                    await blob.makePublic();
+                    const coverUrl = `https://storage.googleapis.com/${bucket.name}/${blob.name}`;
+
+                    // Update the user's cover in the database
+                    const updatedUser = await User.findOneAndUpdate(
+                        { _id: userId },
+                        { $set: { cover: coverUrl } },
+                        { new: true, runValidators: true }
+                    );
+
+                    if (!updatedUser) {
+                        return res.status(404).json({ message: 'User not found' });
+                    }
+
+                    const user = await User.findById(userId)
+                        .populate({
+                            path: 'posts',
+                            populate: [
+                                {
+                                    path: 'comments',
+                                    populate: [
+                                        {
+                                            path: 'user',
+                                            select: 'firstName lastName avatar'
+                                        },
+                                        {
+                                            path: 'replies',
+                                            populate: {
+                                                path: 'user',
+                                                select: 'firstName lastName avatar'
+                                            }
+                                        }
+                                    ]
+                                },
+                                {
+                                    path: 'user',
+                                    select: 'firstName lastName avatar',
+                                },
+                                {
+                                    path: 'likes',
+                                    select: 'firstName lastName avatar',
+                                },
+                            ]
+                        }).populate({
+                            path: 'friends',
+                            select: 'firstName lastName avatar'
+                        }).populate({
+                            path: 'friendRequests',
+                            select: 'firstName lastName avatar'
+                        })
+                        .exec();
+
+                    if (!user) {
+                        return res.status(404).json({ message: 'User not found' });
+                    }
+
+                    if (user.posts) {
+                        user.posts.sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime());
+                    }
+
+                    const { password: _, refreshToken: __, ...userWithoutSensitiveData } = user.toObject();
+
+                    return res.status(200).json({ user: { ...userWithoutSensitiveData, posts: user.posts } });
+                } catch (err) {
+                    console.error('Error making file public:', err);
+                    return res.status(500).json({ message: 'Failed to generate public URL for cover' });
+                }
+            });
+
+            blobStream.end(coverFile.buffer);
+        } else {
+            return res.status(400).json({ message: 'No cover image provided' });
+        }
+    } catch (error) {
+        console.error('Error updating cover:', error);
+        return res.status(500).json({ message: 'Server error' });
+    }
+};
