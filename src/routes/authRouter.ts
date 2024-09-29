@@ -9,6 +9,6 @@ router.get('/verify-email', verifyEmail)
 router.post('/login', login)
 router.get("/get-user", authMiddleware, getUser)
 router.post("/refresh-token", refreshToken)
-router.post("/check", authMiddleware, checkForAuthentication as any)
+router.post("/check", authMiddleware, checkForAuthentication)
 
 export default router;

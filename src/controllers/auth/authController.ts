@@ -1,6 +1,5 @@
 import bcrypt from 'bcrypt';
 import User from '../../models/user';
-import sgMail from "@sendgrid/mail";
 import { Request, Response } from 'express';
 import { generateAccessToken, generateRefreshToken, generateVerificationToken, verifyAccountVerificationToken } from '../../utils/jwt';
 import { MailerSend, Recipient, EmailParams, Sender } from 'mailersend';
@@ -37,33 +36,26 @@ export const register = async (req: Request, res: Response) => {
             apiKey: process.env.MAILER_SEND_API_KEY || "",
         });
 
-        const sender = new Sender("no-reply@trial-o65qngkzyk8gwr12.mlsender.net", "Your Name");
+        const sender = new Sender("no-reply@trial-o65qngkzyk8gwr12.mlsender.net", "Email Verification");
         const recipients = [new Recipient(email, "Recipient")];
 
         const emailParams = new EmailParams({
             from: sender,
             to: recipients,
             subject: "Verify your email",
-            html: `<p>Please verify your email by clicking the following link:</p><a href="${verificationLink}">${verificationLink}</a>`,
-            text: `Please verify your email by clicking the following link: ${verificationLink}`
-        });
-        await mailerSend.email.send(emailParams);
-        // const msg = {
-        //     to: email,
-        //     from: "motofeleaemanuel2009@gmail.com",
-        //     subject: 'Verify your email',
-        //     text: `Please verify your email by clicking the following link: ${verificationLink}`,
-        //     html: `<p>Please verify your email by clicking the following link:</p><a href="${verificationLink}">${verificationLink}</a>`,
-        // };
+            personalization: [
+                {
+                    email: email,
+                    data: {
+                        name: `${firstName} ${lastName}`,
+                        action_url: verificationLink,
+                        account_name: 'EM-Tech SRL'
+                    }
+                }
+            ]
+        }).setTemplateId("neqvygmk3yz40p7w")
 
-        // sgMail
-        //     .send(msg)
-        //     .then((res) => {
-        //         console.log(res, 'Email sent')
-        //     })
-        //     .catch((error) => {
-        //         console.error(error)
-        //     })
+        await mailerSend.email.send(emailParams);
 
         res.status(201).json({ message: 'User registered, please check your email for verification.' });
     } catch (error) {
@@ -79,9 +71,48 @@ export const login = async (req: Request, res: Response) => {
             return res.status(400).json({ message: 'Email and password are required' });
         }
 
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email })
+            .populate({
+                path: 'posts',
+                populate: [
+                    {
+                        path: 'comments',
+                        populate: [
+                            {
+                                path: 'user',
+                                select: 'firstName lastName avatar'
+                            },
+                            {
+                                path: 'replies',  // Populate replies
+                                populate: {
+                                    path: 'user',
+                                    select: 'firstName lastName avatar'  // Populate user for replies
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        path: 'user',
+                        select: 'firstName lastName avatar',
+                    },
+                    {
+                        path: 'likes',
+                        select: 'firstName lastName avatar',
+                    }
+                ]
+            }).populate({
+                path: 'friends',
+                select: 'firstName lastName avatar'
+            }).populate({
+                path: 'friendRequests',
+                select: 'firstName lastName avatar'
+            })
+            .exec();
         if (!user) {
             return res.status(400).json({ message: 'Invalid email or password' });
+        }
+        if (user && user.posts) {
+            user.posts.sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime());
         }
 
         const isPasswordMatch = await bcrypt.compare(password, user.password);
@@ -99,7 +130,7 @@ export const login = async (req: Request, res: Response) => {
         const { password: _, refreshToken: __, ...userWithoutSensitiveData } = user.toObject();
 
         return res.status(200).json({
-            user: userWithoutSensitiveData,
+            user: { ...userWithoutSensitiveData, posts: user.posts },
             accessToken,
             refreshToken
         });
@@ -154,6 +185,7 @@ export const getUser = async (req: Request, res: Response) => {
     }
 }
 
+
 export const checkForAuthentication = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user?.id;
@@ -161,14 +193,55 @@ export const checkForAuthentication = async (req: AuthRequest, res: Response) =>
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
-        const user = await User.findById(userId).exec();
+        const user = await User.findById(userId)
+            .populate({
+                path: 'posts',
+                populate: [
+                    {
+                        path: 'comments',
+                        populate: [
+                            {
+                                path: 'user',
+                                select: 'firstName lastName avatar'
+                            },
+                            {
+                                path: 'replies',  // Populate replies
+                                populate: {
+                                    path: 'user',
+                                    select: 'firstName lastName avatar'  // Populate user for replies
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        path: 'user',
+                        select: 'firstName lastName avatar',
+                    },
+                    {
+                        path: 'likes',
+                        select: 'firstName lastName avatar',
+                    },
+                ]
+            }).populate({
+                path: 'friends',
+                select: 'firstName lastName avatar'
+            }).populate({
+                path: 'friendRequests',
+                select: 'firstName lastName avatar'
+            })
+            .exec();
         if (!user) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
 
+        if (user && user.posts) {
+            user.posts.sort((a: any, b: any) => b.createdAt.getTime() - a.createdAt.getTime());
+        }
+
+
         const { password: _, refreshToken: __, ...userWithoutSensitiveData } = user.toObject();
 
-        return res.status(200).json({ user: { ...userWithoutSensitiveData } });
+        return res.status(200).json({ user: { ...userWithoutSensitiveData, posts: user.posts } });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: 'Server error' });

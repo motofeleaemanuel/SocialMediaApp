@@ -1,14 +1,8 @@
-import { NextFunction, Request, Response } from "express";
+import { NextFunction, Response } from "express";
 import User from "../models/user";
 import { verifyAccessToken } from "../utils/jwt";
+import { AuthRequest } from "../types/AuthRequest";
 
-interface AuthRequest extends Request {
-    user?: {
-        id: string;
-        isVerified: boolean;
-        email: string;
-    }
-}
 
 const authMiddleware = async (
     req: AuthRequest,
