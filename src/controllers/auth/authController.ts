@@ -31,8 +31,8 @@ export const register = async (req: Request, res: Response) => {
 
         await newUser.save();
 
-        const emailVerificationEnvLink = process.env.EMAIL_VERIFICATION_LINK
-        const verificationLink = `${emailVerificationEnvLink}` + `${verificationToken}`;
+        // const emailVerificationEnvLink = process.env.EMAIL_VERIFICATION_LINK;
+        const verificationLink = `https://avatarstorage-9f29d.web.app/verify-email?token=${verificationToken}`;
         const mailerSend = new MailerSend({
             apiKey: process.env.MAILER_SEND_API_KEY || "",
         });
